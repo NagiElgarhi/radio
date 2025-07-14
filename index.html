@@ -105,7 +105,7 @@
             font-weight: normal;
             font-size: 2.5rem;
             text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
-            margin-bottom: 25px;
+            margin-bottom: 20px;
             line-height: 1;
             text-align: center;
             width: 100%;
@@ -317,21 +317,59 @@
         #transcription-display {
             width: 100%;
             flex-grow: 1; /* Allow display area to grow */
-            min-height: 250px;
-            overflow-y: scroll; /* Ensures scroll bar is always present */
+            min-height: 250px; /* Maintain a fixed minimum height */
+            max-height: 350px; /* Added max-height for better control */
             background-color: #2c2824;
             border: 2px solid #593a1a;
             border-radius: 8px;
-            padding: 15px;
-            font-size: 1.2rem;
+            padding: 15px 10px; /* 10px padding for left/right */
+            font-size: 1.6rem; /* Increased font size for better visibility */
             color: #f0e6d2;
-            text-align: right;
+            text-align: right; /* Start text from right */
             line-height: 1.6;
             direction: rtl;
             box-shadow: inset 0 0 8px rgba(0,0,0,0.6);
             margin-bottom: 15px;
             box-sizing: border-box;
+
+            /* Crucial for the "scrolling" effect without scrollbar */
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end; /* Align content to the bottom initially */
+            overflow: hidden; /* Hide scrollbar completely */
+            position: relative; /* For positioning child elements if needed (e.g., active line indicator) */
+            will-change: scroll-position; /* Optimization hint for browsers */
+            /* Removed scroll-behavior: smooth from here. Will control it via JS for precision. */
         }
+
+        #transcription-display p {
+            margin: 0; /* Remove default paragraph margins for precise spacing */
+            padding: 2px 0; /* Small vertical padding for lines */
+            width: 100%; /* Ensure paragraphs take full width */
+            text-align: right; /* Ensure text aligns right */
+            box-sizing: border-box;
+            word-wrap: break-word; /* Wrap long words */
+            flex-shrink: 0; /* Prevent paragraphs from shrinking */
+            opacity: 1; /* Default opacity */
+            transition: opacity 0.5s ease-out, transform 0.5s ease-out; /* Smooth transition for fading out and position */
+            /* Add a fixed height or min-height for better stability */
+            min-height: 1.6rem; /* Adjust based on your line-height and font-size to fit one line */
+            height: auto; /* Allow auto height for wrapping, but min-height provides base */
+        }
+
+        /* Styling for the currently active (being typed) line */
+        #transcription-display p.active-line {
+            font-weight: bold; /* Make it stand out */
+            /* Add a subtle color change or shadow if desired */
+            /* color: #FFD700; */
+        }
+
+        /* Optional: Style for fading out old lines */
+        #transcription-display p.fading-out {
+            opacity: 0;
+            transform: translateY(-20px); /* Move slightly up as it fades */
+        }
+
 
         #transcription-status {
             font-size: 1.1rem;
@@ -489,11 +527,7 @@
                 <div class="transcription-area" dir="rtl">
                     <div id="transcription-status">اضغط على الميكروفون للبدء</div>
                     <div id="transcription-display">
-                        <p>ابدأ الاستماع وسيتظهر الكلمات المنطوقة هنا مباشرةً.</p>
-                        <p>
-                            **ملاحظة هامة جداً:** هذه الميزة تستمع إلى **الميكروفون** الخاص بجهازك. **لا يمكنها ترجمة صوت الراديو** أو أي صوت آخر يتم تشغيله مباشرةً من اللاب توب (مثل صوت الأفلام أو الموسيقى) بدون حلول برمجية معقدة جداً تتطلب خادمًا وخدمات تحويل الصوت السحابية المتخصصة (مثل Google Cloud Speech-to-Text أو AWS Transcribe).
-                        </p>
-                    </div>
+                        </div>
                     <div class="transcription-controls">
                         <button id="start-transcription-btn" class="icon-btn">🎤</button>
                         <button id="clear-transcription-btn" class="icon-btn">❌</button>
@@ -602,10 +636,44 @@
 
             let recognition;
             let isTranscribing = false;
+            let currentLineElement = null; // Stores the <p> element for the currently spoken line
 
-            // Function to scroll to the bottom of the transcription display
-            function scrollToBottom() {
-                transcriptionDisplay.scrollTop = transcriptionDisplay.scrollHeight;
+            // Max lines to keep in the DOM to simulate "disappearing"
+            const MAX_DISPLAY_LINES = 7; // Example: Enough to fill screen + 2-3 extra lines
+
+
+            // Function to manage the "scrolling" effect and remove old lines
+            function updateTranscriptionDisplay() {
+                if (!currentLineElement) return;
+
+                const containerHeight = transcriptionDisplay.clientHeight;
+                const activeLineHeight = currentLineElement.offsetHeight; // Get the actual height of the line
+
+                // Calculate the desired scroll position to center the active line
+                const desiredScrollTop = currentLineElement.offsetTop - (containerHeight / 2) + (activeLineHeight / 2);
+
+                // Use a direct scrollTo with smooth behavior
+                transcriptionDisplay.scrollTo({
+                    top: desiredScrollTop,
+                    behavior: 'smooth'
+                });
+
+                // Remove oldest lines if we exceed the max limit
+                setTimeout(() => {
+                    while (transcriptionDisplay.children.length > MAX_DISPLAY_LINES) {
+                        const oldestLine = transcriptionDisplay.firstElementChild;
+                        if (oldestLine) { // Ensure oldestLine exists
+                            oldestLine.classList.add('fading-out'); // Add fade-out class
+                            oldestLine.addEventListener('transitionend', () => {
+                                if (oldestLine.parentNode) {
+                                    oldestLine.parentNode.removeChild(oldestLine);
+                                }
+                            }, { once: true }); // Remove after transition ends
+                        } else {
+                            break; // Stop if no more children
+                        }
+                    }
+                }, 50); // Small delay, e.g., 50ms
             }
 
             if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
@@ -614,13 +682,15 @@
                 recognition.interimResults = true; // Show results while speaking
                 recognition.lang = 'ar-SA'; // Set language to Arabic (Saudi Arabia for general Arabic)
 
-                // Prevent the service from stopping automatically after a pause
                 recognition.onend = () => {
-                    if (isTranscribing) { // If it ended but we still want it to be continuous
-                        recognition.start(); // Restart recognition
+                    if (isTranscribing) {
+                        recognition.start(); // Restart recognition automatically
                     } else {
                         transcriptionStatus.textContent = "متوقف";
                         startTranscriptionBtn.classList.remove('active-mic');
+                        if (currentLineElement) {
+                            currentLineElement.classList.remove('active-line');
+                        }
                     }
                 };
 
@@ -628,33 +698,62 @@
                     isTranscribing = true;
                     transcriptionStatus.textContent = "نشط (يستمع للميكروفون)...";
                     startTranscriptionBtn.classList.add('active-mic');
-                    transcriptionDisplay.innerHTML = ''; // Clear for new transcription
-                    scrollToBottom(); // Scroll to bottom when starting
+                    // Clear all content on start (will be replaced by transcription)
+                    while (transcriptionDisplay.firstChild) {
+                        transcriptionDisplay.removeChild(transcriptionDisplay.firstChild);
+                    }
+                    currentLineElement = null; // Reset current line element on start
                 };
 
                 recognition.onresult = (event) => {
-                    let finalTranscript = '';
                     let interimTranscript = '';
+                    let finalTranscript = '';
+                    let hasFinalResult = false;
+
                     for (let i = event.resultIndex; i < event.results.length; ++i) {
                         if (event.results[i].isFinal) {
                             finalTranscript += event.results[i][0].transcript;
+                            hasFinalResult = true;
                         } else {
                             interimTranscript += event.results[i][0].transcript;
                         }
                     }
-                    // Update content. If final, add a new paragraph, else update the last one.
-                    if (finalTranscript) {
-                        transcriptionDisplay.innerHTML += `<p>${finalTranscript}</p>`;
-                    } else if (transcriptionDisplay.lastElementChild && !transcriptionDisplay.lastElementChild.dataset.isFinal) {
-                        transcriptionDisplay.lastElementChild.textContent = interimTranscript;
-                    } else {
-                        const p = document.createElement('p');
-                        p.textContent = interimTranscript;
-                        p.dataset.isFinal = false;
-                        transcriptionDisplay.appendChild(p);
+
+                    // Remove active class from previous line if it was interim and a new line is being processed
+                    if (currentLineElement && currentLineElement.classList.contains('active-line') && !hasFinalResult) {
+                        currentLineElement.classList.remove('active-line');
                     }
 
-                    scrollToBottom(); // Scroll to bottom after each update
+
+                    if (hasFinalResult) {
+                        // If it's a final result, update the current interim element or create a new one
+                        if (currentLineElement && currentLineElement.dataset.isFinal === 'false') {
+                            currentLineElement.textContent = finalTranscript; // Update last interim to final
+                            currentLineElement.dataset.isFinal = 'true';
+                            currentLineElement.classList.remove('active-line'); // Remove active class once it's final
+                        } else {
+                            // Or create a new one if no interim was active or previous was final
+                            const p = document.createElement('p');
+                            p.textContent = finalTranscript;
+                            p.dataset.isFinal = 'true';
+                            transcriptionDisplay.appendChild(p);
+                            currentLineElement = p;
+                        }
+                        updateTranscriptionDisplay(); // Scroll to place the new final line in view and trim old ones
+                        currentLineElement = null; // Ready for a new line after this final one
+
+                    } else if (interimTranscript) {
+                        // If it's an interim result
+                        if (!currentLineElement || currentLineElement.dataset.isFinal === 'true') {
+                            // Create a new paragraph for the interim result if none exists or previous was final
+                            currentLineElement = document.createElement('p');
+                            currentLineElement.dataset.isFinal = 'false';
+                            transcriptionDisplay.appendChild(currentLineElement);
+                        }
+                        currentLineElement.textContent = interimTranscript;
+                        currentLineElement.classList.add('active-line'); // Mark as active
+                        updateTranscriptionDisplay(); // Scroll to center the active line
+                    }
                 };
 
                 recognition.onerror = (event) => {
@@ -662,6 +761,9 @@
                     transcriptionStatus.textContent = `خطأ: ${event.error}`;
                     if (isTranscribing) {
                         startTranscriptionBtn.classList.remove('active-mic');
+                        if (currentLineElement) {
+                            currentLineElement.classList.remove('active-line');
+                        }
                         isTranscribing = false;
                     }
                 };
@@ -672,6 +774,9 @@
                         isTranscribing = false;
                         transcriptionStatus.textContent = "متوقف";
                         startTranscriptionBtn.classList.remove('active-mic');
+                        if (currentLineElement) {
+                            currentLineElement.classList.remove('active-line');
+                        }
                     } else {
                         try {
                             // Request microphone permission and start listening
@@ -679,13 +784,11 @@
                                 .then(stream => {
                                     // Media stream is obtained, now start recognition
                                     recognition.start();
-                                    // Stop the stream tracks after a short delay, as the recognition API handles its own audio processing
-                                    // This prevents the mic icon from staying active in browser tab if not needed
-                                    stream.getTracks().forEach(track => track.stop());
+                                    stream.getTracks().forEach(track => track.stop()); // Stop mic access after starting recognition
                                 })
                                 .catch(err => {
                                     console.error("Microphone access denied or error:", err);
-                                    transcriptionStatus.textContent = "فشل الوصول إلى الميكروفون.";
+                                    transcriptionStatus.textContent = "فشل الوصول إلى الميكروفون. يرجى السماح بالوصول.";
                                     startTranscriptionBtn.classList.remove('active-mic');
                                 });
                         } catch (e) {
@@ -696,14 +799,19 @@
                 });
 
                 clearTranscriptionBtn.addEventListener('click', () => {
-                    transcriptionDisplay.innerHTML = `
-                        <p>ابدأ الاستماع وسيتظهر الكلمات المنطوقة هنا مباشرةً.</p>
-                        <p>
-                            **ملاحظة هامة جداً:** هذه الميزة تستمع إلى **الميكروفون** الخاص بجهازك. **لا يمكنها ترجمة صوت الراديو** أو أي صوت آخر يتم تشغيله مباشرةً من اللاب توب (مثل صوت الأفلام أو الموسيقى) بدون حلول برمجية معقدة جداً تتطلب خادمًا وخدمات تحويل الصوت السحابية المتخصصة (مثل Google Cloud Speech-to-Text أو AWS Transcribe).
-                        </p>
-                    `;
-                    scrollToBottom(); // Scroll to bottom after clearing
+                    // Clear all existing paragraphs with fade out
+                    Array.from(transcriptionDisplay.children).forEach(child => {
+                        child.classList.add('fading-out');
+                        child.addEventListener('transitionend', () => {
+                            if (child.parentNode) {
+                                child.parentNode.removeChild(child);
+                            }
+                        }, { once: true });
+                    });
+
+                    currentLineElement = null; // Reset current line element
                 });
+
             } else {
                 transcriptionStatus.textContent = "متصفحك لا يدعم وظيفة تحويل الكلام إلى نص.";
                 startTranscriptionBtn.disabled = true;
