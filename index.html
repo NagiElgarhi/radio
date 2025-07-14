@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radio Nagiz - راديو مع خدمة ترجمة الصوت</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        /* @font-face rule to load the Ringbearer font */
+        @font-face {
+            font-family: 'Ringbearer';
+            src: url('Ringbearer.ttf') format('truetype'); /* Adjust path and format if needed */
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        body {
+            background-color: #3d3732;
+            font-family: 'Ringbearer', sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start; /* Start content from the top */
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        /* --- Global Text Styling (for elements not affected by the new note styling) --- */
+        h1, .station-btn, #status-display, label, #stop-btn, #transcription-status, .radio-internal-footer p, .section-title {
+            background: linear-gradient(45deg, #FFD700, #F39C12, #BF5700);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: #FFD700; /* Fallback */
+            font-family: 'Ringbearer', sans-serif;
+        }
+
+        /* Styles for the top alert bar */
+        .accessibility-note {
+            background: linear-gradient(45deg, #FFD700, #F39C12, #BF5700); /* Golden gradient background */
+            border: 3px solid #4a2f1a;
+            border-radius: 10px;
+            padding: 10px 25px;
+            margin-bottom: 30px;
+            width: 95%;
+            max-width: 1400px;
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.5);
+            text-align: center;
+            direction: rtl;
+            height: 80px; /* Fixed height for the bar */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden; /* Hide overflowing text */
+            box-sizing: border-box; /* Include padding/border in height calculation */
+        }
+
+        .accessibility-note p {
+            margin: 0; /* Remove default paragraph margins */
+            font-size: 1.3rem; /* Larger font size */
+            white-space: nowrap; /* Keep text on a single line */
+            overflow: hidden; /* Hide text if it overflows horizontally */
+            text-overflow: ellipsis; /* Add "..." if text is truncated */
+            font-weight: bold; /* Make text bold for clarity */
+            font-family: 'Ringbearer', sans-serif;
+            color: #4A2F1A; /* Dark Brown Color */
+            -webkit-text-fill-color: #4A2F1A; /* Ensure it's not transparent */
+            background: none; /* Remove gradient from text itself */
+        }
+
+        /* Main sections wrapper for two columns */
+        .main-sections-wrapper {
+            display: grid;
+            grid-template-columns: 1fr; /* Single column on small screens */
+            gap: 30px;
+            width: 100%;
+            max-width: 1400px; /* Ensures it aligns with the note bar */
+            margin-bottom: 40px; /* Space before the footer title */
+            flex-grow: 1; /* Allow wrapper to grow and take available space */
+        }
+
+        @media (min-width: 992px) { /* Two columns on larger screens */
+            .main-sections-wrapper {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        /* Main Section styling (applied to both radio and transcription sections) */
+        .main-section {
+            background: linear-gradient(145deg, #8c5a2b, #593a1a);
+            border: 5px solid #4a2f1a;
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 10px 10px 20px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(0,0,0,0.4);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            direction: rtl; /* For RTL text alignment */
+            flex-grow: 1; /* Allow sections to grow vertically */
+            justify-content: space-between; /* Distribute content vertically */
+        }
+
+        .section-title { /* Keep this rule for potential future titles or other uses */
+            font-weight: normal;
+            font-size: 2.5rem;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+            margin-bottom: 25px;
+            line-height: 1;
+            text-align: center;
+            width: 100%;
+        }
+
+        /* Radio Specific Styles */
+        .top-panel {
+            background-color: #4a2f1a;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+            margin-bottom: 25px;
+            width: 100%;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        /* Station selectors styling (now directly between status display and controls) */
+        .station-selectors {
+            display: flex;
+            justify-content: center; /* Center buttons horizontally */
+            align-items: center;
+            gap: 30px;
+            width: 100%;
+            max-width: 500px; /* Limit width to keep buttons closer on large screens */
+            box-sizing: border-box;
+            flex-wrap: wrap; /* Allow wrapping on small screens */
+            margin-bottom: 25px; /* Add margin after buttons, before controls */
+            flex-shrink: 0; /* Prevent from shrinking too much if space is tight */
+        }
+
+        .station-btn {
+            background-color: #f0e6d2;
+            border: 4px solid #593a1a;
+            border-radius: 50%;
+            width: 100px;
+            height: 100px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 2px 2px 8px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            line-height: 1.2;
+            margin: 0 15px;
+        }
+
+        .station-btn:hover {
+            background-color: #fff;
+            transform: translateY(-2px);
+        }
+
+        .station-btn.active {
+            background-color: #f0e6d2;
+            border-color: #f39c12;
+            box-shadow: 0 0 15px #f39c12, inset 0 0 10px rgba(0,0,0,0.4);
+        }
+
+        #status-display {
+            font-size: 40px;
+            font-weight: bold;
+            height: auto;
+            text-align: center;
+            width: auto;
+            margin: 0 20px 20px; /* Adjusted margin-bottom to create space before buttons */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0; /* Prevent from shrinking too much if space is tight */
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center; /* Center the group of controls */
+            align-items: center;
+            background-color: #4a2f1a;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 15px;
+            flex-wrap: wrap; /* Allow wrapping for responsiveness */
+            gap: 20px; /* Increased gap between control groups for better spacing */
+            flex-shrink: 0; /* Prevent from shrinking too much if space is tight */
+        }
+
+        .stone-dots {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            max-width: 400px;
+            margin: 0; /* Adjusted margin for better centering within controls */
+        }
+
+        .stone-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            box-shadow: inset 1px 1px 3px rgba(0,0,0,0.4);
+        }
+        /* Custom stone colors for 24 unique dots */
+        .stone-dot:nth-child(1) { background-color: #8B4513; }
+        .stone-dot:nth-child(2) { background-color: #A0522D; }
+        .stone-dot:nth-child(3) { background-color: #D2B48C; }
+        .stone-dot:nth-child(4) { background-color: #CD853F; }
+        .stone-dot:nth-child(5) { background-color: #BC8F8F; }
+        .stone-dot:nth-child(6) { background-color: #6B8E23; }
+        .stone-dot:nth-child(7) { background-color: #BDB76B; }
+        .stone-dot:nth-child(8) { background-color: #A9A9A9; }
+        .stone-dot:nth-child(9) { background-color: #708090; }
+        .stone-dot:nth-child(10) { background-color: #556B2F; }
+        .stone-dot:nth-child(11) { background-color: #808000; }
+        .stone-dot:nth-child(12) { background-color: #8FBC8F; }
+        .stone-dot:nth-child(13) { background-color: #B0C4DE; }
+        .stone-dot:nth-child(14) { background-color: #6A5ACD; }
+        .stone-dot:nth-child(15) { background-color: #696969; }
+        .stone-dot:nth-child(16) { background-color: #DDA0DD; }
+        .stone-dot:nth-child(17) { background-color: #9370DB; }
+        .stone-dot:nth-child(18) { background-color: #B8860B; }
+        .stone-dot:nth-child(19) { background-color: #DAA520; }
+        .stone-dot:nth-child(20) { background-color: #CD5C5C; }
+        .stone-dot:nth-child(21) { background-color: #FF6347; }
+        .stone-dot:nth-child(22) { background-color: #F4A460; }
+        .stone-dot:nth-child(23) { background-color: #DEB887; }
+        .stone-dot:nth-child(24) { background-color: #D2691E; }
+
+        #stop-btn {
+            background-color: #f0e6d2; /* White/off-white */
+            border: 4px solid #593a1a; /* Dark brown border */
+            border-radius: 50%; /* Make it circular */
+            width: 100px; /* Same size as channel buttons */
+            height: 100px; /* Same size as channel buttons */
+            font-size: 1.1rem; /* Same font size */
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 2px 2px 8px rgba(0,0,0,0.6);
+            display: flex; /* To center text vertically and horizontally */
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            line-height: 1.2;
+            color: #4A2F1A; /* Dark brown text color */
+            -webkit-text-fill-color: #4A2F1A; /* Ensure text color is applied */
+            background-clip: padding-box; /* Needed for text color when background-clip: text is global */
+            flex-shrink: 0; /* Prevent from shrinking too much if space is tight */
+        }
+
+        #stop-btn:hover {
+            background-color: #fff; /* Lighter on hover */
+            transform: translateY(-2px);
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0; /* Prevent from shrinking too much if space is tight */
+        }
+
+        label {
+            font-size: 1rem;
+            font-weight: bold;
+        }
+
+        .classic-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 180px;
+            height: 10px;
+            background: #c8b496;
+            border-radius: 5px;
+            outline: none;
+        }
+
+        .classic-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 25px;
+            height: 25px;
+            background: #f0e6d2;
+            border-radius: 50%;
+            border: 2px solid #593a1a;
+            cursor: pointer;
+        }
+
+        /* Styles for Transcription Area */
+        .transcription-area {
+            width: 100%;
+            padding: 0;
+            margin-top: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex-grow: 1; /* Allow it to grow and fill available space */
+            justify-content: space-between;
+        }
+
+        #transcription-display {
+            width: 100%;
+            flex-grow: 1; /* Allow display area to grow */
+            min-height: 250px;
+            overflow-y: scroll; /* Ensures scroll bar is always present */
+            background-color: #2c2824;
+            border: 2px solid #593a1a;
+            border-radius: 8px;
+            padding: 15px;
+            font-size: 1.2rem;
+            color: #f0e6d2;
+            text-align: right;
+            line-height: 1.6;
+            direction: rtl;
+            box-shadow: inset 0 0 8px rgba(0,0,0,0.6);
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+
+        #transcription-status {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            text-align: center;
+            flex-shrink: 0; /* Prevent from shrinking */
+        }
+
+        .transcription-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            margin-top: 10px;
+            gap: 15px;
+            flex-shrink: 0; /* Prevent from shrinking */
+        }
+
+        /* Modified .icon-btn to match #stop-btn's appearance */
+        .icon-btn {
+            background-color: #f0e6d2; /* Same as stop button */
+            border: 4px solid #593a1a; /* Same as stop button */
+            border-radius: 50%; /* Make it circular, like stop button */
+            width: 80px; /* Keep current size */
+            height: 80px; /* Keep current size */
+            font-size: 3rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 2px 2px 8px rgba(0,0,0,0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #4A2F1A; /* Dark brown text color, same as stop button */
+            -webkit-text-fill-color: #4A2F1A; /* Ensure text color is applied */
+            background-clip: padding-box; /* Needed for text color when background-clip: text is global */
+        }
+
+        .icon-btn:hover {
+            background-color: #fff; /* Lighter on hover, same as stop button */
+            transform: translateY(-2px);
+        }
+
+        .icon-btn.active-mic {
+            background-color: #e74c3c; /* Red background for active mic */
+            border-color: #c0392b; /* Darker red border */
+            color: white; /* White icon when recording */
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from {
+                box-shadow: 0 0 5px #f39c12, inset 0 0 5px rgba(0,0,0,0.4);
+            }
+            to {
+                box-shadow: 0 0 20px #f39c12, inset 0 0 15px rgba(0,0,0,0.6);
+            }
+        }
+
+        /* Footer styling (for the NagiZ Smart Solution part) */
+        .radio-internal-footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 18px;
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            align-items: center;
+            padding: 0 10px;
+            box-sizing: border-box;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .radio-internal-footer p {
+            margin: 0;
+            font-weight: bold;
+            font-size: 24px;
+        }
+
+        .footer-brand {
+            font-size: 1.3em;
+            letter-spacing: 2px;
+        }
+
+        .temple-icon {
+            font-size: 1.1em;
+            vertical-align: -0.1em;
+            margin-left: 8px;
+        }
+
+        /* Application Title at the bottom */
+        .app-footer-title {
+            font-weight: normal;
+            font-size: 4.2rem;
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+            line-height: 1;
+            text-align: center;
+            width: 100%;
+            margin-top: auto; /* Pushes the title to the bottom if there's space */
+            padding-bottom: 20px; /* Some padding at the very bottom */
+        }
+
+        .large-z {
+            font-size: 200%;
+            display: inline-block;
+            vertical-align: -0.25em;
+            margin: 0 -0.1em;
+        }
+
+        .turquoise-z {
+            background: linear-gradient(45deg, #FF8C00, #FFA500, #FFD700); /* Orange to Yellow gradient */
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: #FFA500; /* Fallback for older browsers */
+            font-family: 'Ringbearer', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div class="accessibility-note">
+        <p>ملاحظة لأخواتنا وإخواننا من الصم وضعاف السمع: يمكنكم استخدام جهاز للاستماع إلى الراديو وجهاز آخر بجانبه لتحويل الصوت إلى نص.</p>
+    </div>
+
+    <div class="main-container">
+        <div class="main-sections-wrapper">
+            <div class="main-section">
+                <div class="top-panel" dir="rtl">
+                    <div id="status-display">اختر محطة للبدء</div>
+                </div>
+
+                <div class="station-selectors">
+                    <button id="aljazeera-btn" class="station-btn">راديو<br>الجزيرة</button>
+                    <button id="quran-btn" class="station-btn">القرآن الكريم<br>(القاهرة)</button>
+                </div>
+
+                <div class="controls" dir="rtl">
+                    <div class="control-group">
+                        <label for="volume-slider">الصوت</label>
+                        <input type="range" id="volume-slider" class="classic-slider" min="0" max="1" step="0.01" value="0.8">
+                    </div>
+                    <button id="stop-btn">إيقاف</button>
+                    <div class="stone-dots">
+                        <div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div>
+                        <div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div>
+                        <div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div>
+                        <div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div>
+                        <div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div><div class="stone-dot"></div>
+                    </div>
+                </div>
+                <audio id="audio-player" style="display:none;"></audio>
+            </div>
+
+            <div class="main-section">
+                <div class="transcription-area" dir="rtl">
+                    <div id="transcription-status">اضغط على الميكروفون للبدء</div>
+                    <div id="transcription-display">
+                        <p>ابدأ الاستماع وسيتظهر الكلمات المنطوقة هنا مباشرةً.</p>
+                        <p>
+                            **ملاحظة هامة جداً:** هذه الميزة تستمع إلى **الميكروفون** الخاص بجهازك. **لا يمكنها ترجمة صوت الراديو** أو أي صوت آخر يتم تشغيله مباشرةً من اللاب توب (مثل صوت الأفلام أو الموسيقى) بدون حلول برمجية معقدة جداً تتطلب خادمًا وخدمات تحويل الصوت السحابية المتخصصة (مثل Google Cloud Speech-to-Text أو AWS Transcribe).
+                        </p>
+                    </div>
+                    <div class="transcription-controls">
+                        <button id="start-transcription-btn" class="icon-btn">🎤</button>
+                        <button id="clear-transcription-btn" class="icon-btn">❌</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h1 class="app-footer-title"><span class="app-title-font">Radio Nagi</span><span class="large-z turquoise-z">z</span></h1>
+        <div class="radio-internal-footer">
+            <p><span class="app-title-font">Nagi</span><span class="turquoise-z">z</span> Smart Solution<span class="temple-icon">🏛️</span></p>
+            <p class="footer-brand">Nss - 2025 &copy;</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Radio Player Logic ---
+            const audioPlayer = document.getElementById('audio-player');
+            const aljazeeraBtn = document.getElementById('aljazeera-btn');
+            const quranBtn = document.getElementById('quran-btn');
+            const stopBtn = document.getElementById('stop-btn');
+            const volumeSlider = document.getElementById('volume-slider');
+            const statusDisplay = document.getElementById('status-display');
+
+            const stations = {
+                aljazeera: { name: 'الجزيرة', url: 'https://live-hls-audio-web-aja.getaj.net/VOICE-AJA/index.m3u8', isHls: true },
+                quran: { name: 'القرآن الكريم (القاهرة)', url: 'https://stream.radiojar.com/8s5u5tpdtwzuv', isHls: false }
+            };
+            let hls = null, currentStation = null;
+
+            function stopPlayback() {
+                audioPlayer.pause();
+                audioPlayer.src = '';
+                if (hls) {
+                    hls.destroy();
+                    hls = null;
+                }
+                statusDisplay.textContent = "تم الإيقاف";
+                aljazeeraBtn.classList.remove('active');
+                quranBtn.classList.remove('active');
+                currentStation = null;
+            }
+
+            function playStation(stationKey) {
+                if (currentStation === stationKey) return;
+
+                stopPlayback();
+
+                currentStation = stationKey;
+                const station = stations[stationKey];
+                statusDisplay.textContent = `جاري تشغيل: ${station.name}`;
+
+                aljazeeraBtn.classList.toggle('active', stationKey === 'aljazeera');
+                quranBtn.classList.toggle('active', stationKey === 'quran');
+
+                if (station.isHls) {
+                    if (Hls.isSupported()) {
+                        hls = new Hls();
+                        hls.loadSource(station.url);
+                        hls.attachMedia(audioPlayer);
+                        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                            audioPlayer.play().catch(e => console.error("Play error:", e));
+                            statusDisplay.textContent = `جاري الاستماع: ${station.name}`;
+                        });
+                        hls.on(Hls.Events.ERROR, (event, data) => {
+                            if (data.fatal) {
+                                console.error('HLS error:', data);
+                                statusDisplay.textContent = "خطأ في بث الجزيرة";
+                                stopPlayback();
+                            }
+                        });
+                    } else {
+                        statusDisplay.textContent = "المتصفح لا يدعم هذا البث";
+                    }
+                } else {
+                    audioPlayer.src = station.url;
+                    audioPlayer.load();
+                    audioPlayer.play().catch(e => console.error("Play error:", e));
+                    statusDisplay.textContent = `جاري الاستماع: ${station.name}`;
+                }
+            }
+
+            aljazeeraBtn.addEventListener('click', () => playStation('aljazeera'));
+            quranBtn.addEventListener('click', () => playStation('quran'));
+            stopBtn.addEventListener('click', stopPlayback);
+            volumeSlider.addEventListener('input', (e) => audioPlayer.volume = e.target.value);
+
+            audioPlayer.addEventListener('playing', () => {
+                if (currentStation) statusDisplay.textContent = `جاري الاستماع: ${stations[currentStation].name}`;
+            });
+            audioPlayer.addEventListener('error', () => {
+                if (currentStation) {
+                    statusDisplay.textContent = `خطأ في بث ${stations[currentStation].name}`;
+                    stopPlayback();
+                }
+            });
+
+            audioPlayer.volume = volumeSlider.value;
+
+            // --- Speech Recognition (Microphone-based functionality) ---
+            const transcriptionDisplay = document.getElementById('transcription-display');
+            const startTranscriptionBtn = document.getElementById('start-transcription-btn');
+            const clearTranscriptionBtn = document.getElementById('clear-transcription-btn');
+            const transcriptionStatus = document.getElementById('transcription-status');
+
+            let recognition;
+            let isTranscribing = false;
+
+            // Function to scroll to the bottom of the transcription display
+            function scrollToBottom() {
+                transcriptionDisplay.scrollTop = transcriptionDisplay.scrollHeight;
+            }
+
+            if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+                recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                recognition.continuous = true; // Keep listening
+                recognition.interimResults = true; // Show results while speaking
+                recognition.lang = 'ar-SA'; // Set language to Arabic (Saudi Arabia for general Arabic)
+
+                // Prevent the service from stopping automatically after a pause
+                recognition.onend = () => {
+                    if (isTranscribing) { // If it ended but we still want it to be continuous
+                        recognition.start(); // Restart recognition
+                    } else {
+                        transcriptionStatus.textContent = "متوقف";
+                        startTranscriptionBtn.classList.remove('active-mic');
+                    }
+                };
+
+                recognition.onstart = () => {
+                    isTranscribing = true;
+                    transcriptionStatus.textContent = "نشط (يستمع للميكروفون)...";
+                    startTranscriptionBtn.classList.add('active-mic');
+                    transcriptionDisplay.innerHTML = ''; // Clear for new transcription
+                    scrollToBottom(); // Scroll to bottom when starting
+                };
+
+                recognition.onresult = (event) => {
+                    let finalTranscript = '';
+                    let interimTranscript = '';
+                    for (let i = event.resultIndex; i < event.results.length; ++i) {
+                        if (event.results[i].isFinal) {
+                            finalTranscript += event.results[i][0].transcript;
+                        } else {
+                            interimTranscript += event.results[i][0].transcript;
+                        }
+                    }
+                    // Update content. If final, add a new paragraph, else update the last one.
+                    if (finalTranscript) {
+                        transcriptionDisplay.innerHTML += `<p>${finalTranscript}</p>`;
+                    } else if (transcriptionDisplay.lastElementChild && !transcriptionDisplay.lastElementChild.dataset.isFinal) {
+                        transcriptionDisplay.lastElementChild.textContent = interimTranscript;
+                    } else {
+                        const p = document.createElement('p');
+                        p.textContent = interimTranscript;
+                        p.dataset.isFinal = false;
+                        transcriptionDisplay.appendChild(p);
+                    }
+
+                    scrollToBottom(); // Scroll to bottom after each update
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                    transcriptionStatus.textContent = `خطأ: ${event.error}`;
+                    if (isTranscribing) {
+                        startTranscriptionBtn.classList.remove('active-mic');
+                        isTranscribing = false;
+                    }
+                };
+
+                startTranscriptionBtn.addEventListener('click', () => {
+                    if (isTranscribing) {
+                        recognition.stop();
+                        isTranscribing = false;
+                        transcriptionStatus.textContent = "متوقف";
+                        startTranscriptionBtn.classList.remove('active-mic');
+                    } else {
+                        try {
+                            // Request microphone permission and start listening
+                            navigator.mediaDevices.getUserMedia({ audio: true })
+                                .then(stream => {
+                                    // Media stream is obtained, now start recognition
+                                    recognition.start();
+                                    // Stop the stream tracks after a short delay, as the recognition API handles its own audio processing
+                                    // This prevents the mic icon from staying active in browser tab if not needed
+                                    stream.getTracks().forEach(track => track.stop());
+                                })
+                                .catch(err => {
+                                    console.error("Microphone access denied or error:", err);
+                                    transcriptionStatus.textContent = "فشل الوصول إلى الميكروفون.";
+                                    startTranscriptionBtn.classList.remove('active-mic');
+                                });
+                        } catch (e) {
+                            console.error("Speech recognition already started or failed to start:", e);
+                            transcriptionStatus.textContent = "خطأ: جاري التشغيل بالفعل أو فشل البدء";
+                        }
+                    }
+                });
+
+                clearTranscriptionBtn.addEventListener('click', () => {
+                    transcriptionDisplay.innerHTML = `
+                        <p>ابدأ الاستماع وسيتظهر الكلمات المنطوقة هنا مباشرةً.</p>
+                        <p>
+                            **ملاحظة هامة جداً:** هذه الميزة تستمع إلى **الميكروفون** الخاص بجهازك. **لا يمكنها ترجمة صوت الراديو** أو أي صوت آخر يتم تشغيله مباشرةً من اللاب توب (مثل صوت الأفلام أو الموسيقى) بدون حلول برمجية معقدة جداً تتطلب خادمًا وخدمات تحويل الصوت السحابية المتخصصة (مثل Google Cloud Speech-to-Text أو AWS Transcribe).
+                        </p>
+                    `;
+                    scrollToBottom(); // Scroll to bottom after clearing
+                });
+            } else {
+                transcriptionStatus.textContent = "متصفحك لا يدعم وظيفة تحويل الكلام إلى نص.";
+                startTranscriptionBtn.disabled = true;
+                clearTranscriptionBtn.disabled = true;
+                startTranscriptionBtn.style.backgroundColor = '#7f8c8d';
+                transcriptionDisplay.innerHTML = '<p>المتصفح لا يدعم وظيفة تحويل الصوت إلى نص.</p>';
+            }
+        });
+    </script>
+</body>
+</html>
