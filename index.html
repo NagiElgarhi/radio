@@ -13,16 +13,19 @@
             font-style: normal;
         }
 
+        html, body {
+            width: 130px; /* Set to radio container width */
+            height: 310px; /* Set to radio container height */
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Hide any overflow */
+        }
+
         body {
             background-color: #3d3732;
             font-family: 'Ringbearer', sans-serif;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
+            /* Removed display: flex, justify-content, align-items, min-height, padding */
+            /* because the body now has fixed dimensions matching the container */
         }
 
         /* Main container */
@@ -37,8 +40,17 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            position: relative;
-            margin-top: 15px;
+            position: fixed; /* Changed to fixed to stick to the viewport */
+            top: 0; /* Align to the top of the viewport */
+            left: 0; /* Align to the left of the viewport */
+            margin: 0; /* Remove any default margin */
+            cursor: grab; /* Added for dragging */
+        }
+
+        /* Add a class for when the item is being dragged */
+        .radio-container.dragging {
+            cursor: grabbing;
+            opacity: 0.8;
         }
 
         /* App Title */
@@ -176,23 +188,18 @@
 </head>
 <body>
     <div class="radio-container">
-        <!-- Copyright text -->
         <div class="copyright">Nagiz Smart Solutions</div>
         
-        <!-- NSS - 2025 text - moved down and larger -->
         <div class="year-text">NSS - 2025</div>
         
-        <!-- App Title -->
         <div class="app-title">Radio Nagiz</div>
         
-        <!-- Buttons Container -->
         <div class="buttons-container">
             <button id="quran-btn" class="station-btn">القرآن الكريم</button>
             <button id="aljazeera-btn" class="station-btn">راديو الجزيرة</button>
             <button id="stop-btn">إيقاف</button>
         </div>
         
-        <!-- Volume control -->
         <div class="volume-container">
             <input type="range" id="volume-slider" class="classic-slider" min="0" max="1" step="0.01" value="0.8">
         </div>
@@ -207,6 +214,7 @@
             const quranBtn = document.getElementById('quran-btn');
             const stopBtn = document.getElementById('stop-btn');
             const volumeSlider = document.getElementById('volume-slider');
+            const radioContainer = document.querySelector('.radio-container'); // Get the radio container
 
             const stations = {
                 aljazeera: { name: 'الجزيرة', url: 'https://live-hls-audio-web-aja.getaj.net/VOICE-AJA/index.m3u8', isHls: true },
@@ -273,6 +281,41 @@
             });
 
             audioPlayer.volume = volumeSlider.value;
+
+            // --- Dragging functionality ---
+            let isDragging = false;
+            let offsetX, offsetY;
+
+            radioContainer.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                radioContainer.classList.add('dragging');
+
+                // Calculate the offset from the mouse pointer to the element's top-left corner
+                offsetX = e.clientX - radioContainer.getBoundingClientRect().left;
+                offsetY = e.clientY - radioContainer.getBoundingClientRect().top;
+
+                // Prevent default text selection or other default behaviors
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+
+                // Calculate the new position based on mouse movement and initial offset
+                const newX = e.clientX - offsetX;
+                const newY = e.clientY - offsetY;
+
+                radioContainer.style.left = `${newX}px`;
+                radioContainer.style.top = `${newY}px`;
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    radioContainer.classList.remove('dragging');
+                }
+            });
+            // --- End Dragging functionality ---
         });
     </script>
 </body>
